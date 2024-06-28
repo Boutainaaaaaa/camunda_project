@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:camunda="http://camunda.org/schema/1.0/bpmn" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_0s7ywvi" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.23.0" modeler:executionPlatform="Camunda Platform" modeler:executionPlatformVersion="7.21.0">
+  <bpmn:process id="Process_binaires" isExecutable="true" camunda:versionTag="1" camunda:historyTimeToLive="30">
+    <bpmn:startEvent id="StartEvent_1">
+      <bpmn:outgoing>Flow_0hgm650</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_0hgm650" sourceRef="StartEvent_1" targetRef="Activity_binaires" />
+    <bpmn:scriptTask id="Activity_binaires" name="Télécharger et décompresser les paquets de binaires" scriptFormat="groovy">
+      <bpmn:incoming>Flow_0hgm650</bpmn:incoming>
+      <bpmn:outgoing>Flow_0pr29pl</bpmn:outgoing>
+      <bpmn:script>
+import java.nio.file.Files
+import java.nio.file.Paths
+
+// Commande pour télécharger le fichier
+String downloadCommand = "curl -L -o cni-plugins.tgz https://github.com/containernetworking/plugins/releases/download/v1.3.0/cni-plugins-linux-amd64-v1.3.0.tgz"
+System.out.println("Executing: ${downloadCommand}")
+def downloadProcess = downloadCommand.execute()
+downloadProcess.waitFor()
+
+if (downloadProcess.exitValue() != 0) {
+    System.out.println("Erreur lors du téléchargement du fichier.")
+    throw new RuntimeException("Erreur lors du téléchargement du fichier.")
+}
+
+// Créer le dossier de destination
+String destinationDir = "/CNI"
+Files.createDirectories(Paths.get(destinationDir))
+
+// Commande pour décompresser le fichier
+String extractCommand = "tar -xvzf cni-plugins.tgz -C ${destinationDir}"
+System.out.println("Executing: ${extractCommand}")
+def extractProcess = extractCommand.execute()
+extractProcess.waitFor()
+
+if (extractProcess.exitValue() != 0) {
+    System.out.println("Erreur lors de la décompression du fichier.")
+    throw new RuntimeException("Erreur lors de la décompression du fichier.")
+}
+
+System.out.println("Téléchargement et décompression réussis dans le dossier ${destinationDir}.")
+</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:sequenceFlow id="Flow_0pr29pl" sourceRef="Activity_binaires" targetRef="Event_0wiezml" />
+    <bpmn:endEvent id="Event_0wiezml">
+      <bpmn:incoming>Flow_0pr29pl</bpmn:incoming>
+    </bpmn:endEvent>
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Process_binaires">
+      <bpmndi:BPMNShape id="Activity_0cuwmz6_di" bpmnElement="Activity_binaires">
+        <dc:Bounds x="280" y="80" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="_BPMNShape_StartEvent_2" bpmnElement="StartEvent_1">
+        <dc:Bounds x="172" y="102" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_0wiezml_di" bpmnElement="Event_0wiezml">
+        <dc:Bounds x="622" y="102" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_0hgm650_di" bpmnElement="Flow_0hgm650">
+        <di:waypoint x="208" y="120" />
+        <di:waypoint x="280" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0pr29pl_di" bpmnElement="Flow_0pr29pl">
+        <di:waypoint x="380" y="120" />
+        <di:waypoint x="622" y="120" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
