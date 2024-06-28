@@ -1,0 +1,208 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:camunda="http://camunda.org/schema/1.0/bpmn" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_1fjikah" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.23.0" modeler:executionPlatform="Camunda Platform" modeler:executionPlatformVersion="7.21.0">
+  <bpmn:process id="Process_api" name="call api" isExecutable="true" camunda:versionTag="1" camunda:historyTimeToLive="30">
+    <bpmn:startEvent id="StartEvent_1">
+      <bpmn:outgoing>Flow_1tu8f4i</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_1tu8f4i" sourceRef="StartEvent_1" targetRef="Activity_api" />
+    <bpmn:scriptTask id="Activity_api" name="Choisir cluster KIND" scriptFormat="groovy">
+      <bpmn:incoming>Flow_1tu8f4i</bpmn:incoming>
+      <bpmn:outgoing>Flow_0krfaug</bpmn:outgoing>
+      <bpmn:script>import java.io.ByteArrayOutputStream
+
+// Nom du cluster passé en tant que variable de processus
+def nom_cluster = execution.getVariable("nom_cluster")
+System.out.println("Executing: ${nom_cluster}")
+
+// Exécuter la commande pour obtenir la liste des clusters KIND
+def command = "kind get clusters"
+def process = command.execute()
+def outputStream = new ByteArrayOutputStream()
+def errorStream = new ByteArrayOutputStream()
+process.waitForProcessOutput(outputStream, errorStream)
+
+// Récupérer la sortie de la commande
+def output = outputStream.toString().trim()
+def errors = errorStream.toString().trim()
+
+if (errors) {
+    // S'il y a des erreurs lors de l'exécution de la commande
+    System.out.println("Erreur lors de l'exécution de la commande 'kind get clusters': " + errors)
+    execution.setVariable("process_status", "Erreur lors de l'exécution de la commande")
+    execution.setVariable("cluster_existe", false)
+    throw new RuntimeException("Erreur lors de l'exécution de la commande 'kind get clusters': " + errors)
+} else if (!output.contains(nom_cluster)) {
+    // Si le nom du cluster n'est pas dans la liste des clusters
+    System.out.println("Le cluster '${nom_cluster}' n'existe pas.")
+    execution.setVariable("process_status", "Le cluster n'existe pas")
+    execution.setVariable("cluster_existe", false)
+    // throw new RuntimeException("Le cluster '${nom_cluster}' n'existe pas.")
+} else {
+    // Si le cluster existe
+    System.out.println("Le cluster '${nom_cluster}' existe.")
+    execution.setVariable("process_status", "Le cluster existe")
+    execution.setVariable("cluster_existe", true)
+}
+</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:scriptTask id="Activity_td" name="télécharger et décompresser" scriptFormat="groovy">
+      <bpmn:incoming>Flow_0krfaug</bpmn:incoming>
+      <bpmn:outgoing>Flow_1szphu9</bpmn:outgoing>
+      <bpmn:script>import java.io.File
+import java.nio.file.Files
+import java.nio.file.Paths
+import java.text.SimpleDateFormat
+import java.util.Date
+
+String url = "https://github.com/containernetworking/plugins/releases/download/v1.3.0/cni-plugins-linux-amd64-v1.3.0.tgz"
+String downloadCommand = "curl -L -o cni-plugins.tgz ${url}"
+String timestamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date())
+String destinationDir = "CNI_plugins_" + timestamp
+
+System.out.println("Executing download command: ${downloadCommand}")
+def downloadProcess = downloadCommand.execute()
+downloadProcess.waitFor()
+
+if (downloadProcess.exitValue() != 0) {
+    System.out.println("Erreur lors du téléchargement du fichier.")
+    System.out.println("Téléchargement - Erreur: " + downloadProcess.errorStream.text)
+    throw new RuntimeException("Erreur lors du téléchargement du fichier.")
+}
+
+// Vérifier la taille du fichier téléchargé pour s'assurer qu'il n'est pas vide
+File downloadedFile = new File("cni-plugins.tgz")
+if (!downloadedFile.exists() || downloadedFile.length() == 0) {
+    System.out.println("Le fichier téléchargé est vide ou n'existe pas.")
+    throw new RuntimeException("Le fichier téléchargé est vide ou n'existe pas.")
+}
+
+Files.createDirectories(Paths.get(destinationDir))
+String extractCommand = "tar -xvzf cni-plugins.tgz -C ${destinationDir}"
+System.out.println("Répertoire de destination créé: ${destinationDir}")
+System.out.println("Executing extract command: ${extractCommand}")
+def extractProcess = ["sh", "-c", extractCommand].execute()
+extractProcess.waitFor()
+
+if (extractProcess.exitValue() != 0) {
+    System.out.println("Erreur lors de la décompression du fichier.")
+    System.out.println("Décompression - Erreur: " + extractProcess.errorStream.text)
+    throw new RuntimeException("Erreur lors de la décompression du fichier.")
+}
+
+// Vérifier que le répertoire de destination contient des fichiers après décompression
+File extractedDir = new File(destinationDir)
+if (extractedDir.exists() &amp;&amp; extractedDir.isDirectory() &amp;&amp; extractedDir.list().length == 0) {
+    System.out.println("Le répertoire de décompression est vide.")
+    throw new RuntimeException("Le répertoire de décompression est vide.")
+}
+
+System.out.println("Téléchargement et décompression réussis dans le répertoire : ${destinationDir}.")
+</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:sequenceFlow id="Flow_0krfaug" sourceRef="Activity_api" targetRef="Activity_td" />
+    <bpmn:scriptTask id="Activity_1dntaim" name="identification des noeuds et cp des binaires" scriptFormat="groovy">
+      <bpmn:incoming>Flow_1szphu9</bpmn:incoming>
+      <bpmn:outgoing>Flow_0rzxcy2</bpmn:outgoing>
+      <bpmn:script>// Récupérer le nom du répertoire de destination créé dans la tâche 2
+def destinationDir = execution.getVariable("destinationDir")
+if (destinationDir == null || destinationDir.trim().isEmpty()) {
+    System.out.println("Le répertoire de destination n'est pas défini.")
+    throw new RuntimeException("Le répertoire de destination n'est pas défini.")
+}
+
+// Identifier les conteneurs existants
+String command = "docker ps -q"
+System.out.println("Executing: ${command}")
+def process = command.execute()
+def outputStream = new StringBuffer()
+def errorStream = new StringBuffer()
+
+process.consumeProcessOutput(outputStream, errorStream)
+process.waitFor()
+
+if (process.exitValue() != 0) {
+    System.out.println("Erreur lors de l'exécution de la commande docker ps.")
+    System.out.println("Erreur: " + errorStream.toString())
+    throw new RuntimeException("Erreur lors de l'exécution de la commande docker ps.")
+}
+
+def containerIds = outputStream.toString().trim().split("\n")
+if (containerIds.length == 0) {
+    System.out.println("Aucun conteneur trouvé.")
+    execution.setVariable("process_status", "Aucun conteneur trouvé")
+    throw new RuntimeException("Aucun conteneur trouvé.")
+}
+
+System.out.println("Conteneurs trouvés: ${containerIds.join(', ')}")
+
+// Copier les plugins dans chaque conteneur
+containerIds.each { containerId -&gt;
+    if (containerId.trim()) {
+        String copyCommand = "sudo docker cp ${destinationDir}/ /opt/cni/bin ${containerId}"
+        System.out.println("Executing: ${copyCommand}")
+        def copyProcess = ["sh", "-c", copyCommand].execute()
+        def copyOutputStream = new StringBuffer()
+        def copyErrorStream = new StringBuffer()
+
+        copyProcess.consumeProcessOutput(copyOutputStream, copyErrorStream)
+        copyProcess.waitFor()
+
+        if (copyProcess.exitValue() != 0) {
+            System.out.println("Erreur lors de la copie des binaires dans le conteneur ${containerId}.")
+            System.out.println("Erreur: " + copyErrorStream.toString())
+            execution.setVariable("process_status", "Erreur lors de la copie des binaires dans le conteneur ${containerId}")
+            throw new RuntimeException("Erreur lors de la copie des binaires dans le conteneur ${containerId}: " + copyErrorStream.toString())
+        }
+
+        System.out.println("Binaires copiés avec succès dans le conteneur ${containerId}.")
+    }
+}
+
+execution.setVariable("process_status", "Binaires copiés avec succès dans tous les conteneurs")
+System.out.println("Binaires copiés avec succès dans tous les conteneurs.")
+</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:sequenceFlow id="Flow_1szphu9" sourceRef="Activity_td" targetRef="Activity_1dntaim" />
+    <bpmn:endEvent id="Event_02zaen1">
+      <bpmn:incoming>Flow_0rzxcy2</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_0rzxcy2" sourceRef="Activity_1dntaim" targetRef="Event_02zaen1" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Process_api">
+      <bpmndi:BPMNShape id="_BPMNShape_StartEvent_2" bpmnElement="StartEvent_1">
+        <dc:Bounds x="152" y="99" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_05ax65d_di" bpmnElement="Activity_api">
+        <dc:Bounds x="280" y="77" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_033ke8g_di" bpmnElement="Activity_td">
+        <dc:Bounds x="440" y="77" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_1pne2ch" bpmnElement="Activity_1dntaim">
+        <dc:Bounds x="610" y="77" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_02zaen1_di" bpmnElement="Event_02zaen1">
+        <dc:Bounds x="782" y="99" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_1tu8f4i_di" bpmnElement="Flow_1tu8f4i">
+        <di:waypoint x="188" y="117" />
+        <di:waypoint x="280" y="117" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0krfaug_di" bpmnElement="Flow_0krfaug">
+        <di:waypoint x="380" y="117" />
+        <di:waypoint x="440" y="117" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1szphu9_di" bpmnElement="Flow_1szphu9">
+        <di:waypoint x="540" y="117" />
+        <di:waypoint x="610" y="117" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0rzxcy2_di" bpmnElement="Flow_0rzxcy2">
+        <di:waypoint x="710" y="117" />
+        <di:waypoint x="782" y="117" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
