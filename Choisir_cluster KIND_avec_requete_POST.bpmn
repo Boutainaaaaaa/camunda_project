@@ -34,6 +34,4 @@ if (errors) {
     execution.setVariable("cluster_existe", true)
 }
 
-    </bpmndi:BPMNPlane>
-  </bpmndi:BPMNDiagram>
-</bpmn:definitions>
+
